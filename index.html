@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>GB200 NVL72 Rack Visualization</title>
+  <link rel="stylesheet" href="./style.css" />
+</head>
+<body>
+  <div id="hud">
+    <h1>GB200 NVL72</h1>
+    <p class="subtitle">Click any unit to inspect its components</p>
+    <div id="legend"></div>
+  </div>
+
+  <div id="info-panel" class="hidden">
+    <button id="back-btn">&larr; Back to rack</button>
+    <h2 id="info-title"></h2>
+    <p id="info-count"></p>
+    <p id="info-desc"></p>
+    <h3>Components</h3>
+    <ul id="info-components"></ul>
+  </div>
+
+  <canvas id="scene"></canvas>
+
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+      }
+    }
+  </script>
+  <script type="module" src="./main.js"></script>
+</body>
+</html>
