@@ -25,7 +25,7 @@ const TYPES = {
     color: 0x64b5f6,
     height: U,
     description: 'GB200 compute tray with 2 Grace CPUs and 4 Blackwell GPUs interconnected via NVLink-C2C.',
-    components: ['Grace CPU 0', 'Grace CPU 1', 'Blackwell GPU 0', 'Blackwell GPU 1', 'Blackwell GPU 2', 'Blackwell GPU 3', 'NVLink port cage', 'ConnectX-7 NIC'],
+    components: ['Bianca board ×2', 'Daughter board ×2', 'BlueField-3 ×2', 'Power distribution board', 'Storage bay'],
   },
   nvswitch: {
     name: 'NVSwitch5 Tray',
@@ -42,6 +42,17 @@ const TYPES = {
     components: ['Catch basin', 'Leak sensor'],
   },
 };
+
+const COMPUTE_PARTS = [
+  { name: 'Bianca board',           color: 0x42a5f5, x: -2,   z: -1.2, w: 2,   d: 1.6 },
+  { name: 'Bianca board',           color: 0x42a5f5, x:  2,   z: -1.2, w: 2,   d: 1.6 },
+  { name: 'Daughter board',         color: 0xab47bc, x: -2,   z:  0.2, w: 0.4, d: 1.2 },
+  { name: 'Daughter board',         color: 0xab47bc, x:  2,   z:  0.2, w: 0.4, d: 1.2 },
+  { name: 'Power distribution',     color: 0xff7043, x:  0,   z:  0.2, w: 0.8, d: 1.2 },
+  { name: 'BlueField-3',            color: 0x26a69a, x: -2,   z:  1.4, w: 1.2, d: 1.2 },
+  { name: 'BlueField-3',            color: 0x26a69a, x:  2,   z:  1.4, w: 1.2, d: 1.2 },
+  { name: 'Storage bay',            color: 0xffca28, x:  0,   z:  1.4, w: 0.8, d: 1.2 },
+];
 
 const RACK_LAYOUT = [
   { type: 'ipmi', count: 2 },
@@ -155,15 +166,66 @@ const componentGroup = new THREE.Group();
 componentGroup.visible = false;
 scene.add(componentGroup);
 
+function makeLabel(text) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 256;
+  canvas.height = 64;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = 'rgba(15, 18, 25, 0.85)';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
+  ctx.lineWidth = 2;
+  ctx.strokeRect(1, 1, canvas.width - 2, canvas.height - 2);
+  ctx.font = 'bold 28px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
+  ctx.fillStyle = '#ffffff';
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(text, canvas.width / 2, canvas.height / 2);
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.minFilter = THREE.LinearFilter;
+  const mat = new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true });
+  const sprite = new THREE.Sprite(mat);
+  sprite.scale.set(1.0, 0.25, 1);
+  sprite.renderOrder = 999;
+  return sprite;
+}
+
+function addPart(box, p, partHeight) {
+  const geom = new THREE.BoxGeometry(p.w, partHeight, p.d);
+  const mat = new THREE.MeshStandardMaterial({
+    color: p.color,
+    roughness: 0.4,
+    metalness: 0.45,
+    emissive: p.color,
+    emissiveIntensity: 0.18,
+  });
+  const part = new THREE.Mesh(geom, mat);
+  part.position.set(box.position.x + p.x, box.position.y, box.position.z + p.z);
+  part.add(new THREE.LineSegments(
+    new THREE.EdgesGeometry(geom),
+    new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.4 })
+  ));
+  componentGroup.add(part);
+
+  const label = makeLabel(p.name);
+  label.position.set(part.position.x, part.position.y + partHeight / 2 + 0.18, part.position.z);
+  componentGroup.add(label);
+}
+
 function buildComponentsForBox(box) {
   while (componentGroup.children.length) componentGroup.remove(componentGroup.children[0]);
 
   const def = TYPES[box.userData.type];
+  const partHeight = def.height * 0.65;
+
+  if (box.userData.type === 'compute') {
+    for (const p of COMPUTE_PARTS) addPart(box, p, partHeight);
+    return;
+  }
+
   const components = def.components;
   const innerW = RACK_WIDTH * 0.92;
   const innerD = RACK_DEPTH * 0.92;
-  const innerH = def.height * 0.7;
-
   const cols = Math.ceil(Math.sqrt(components.length * (innerW / innerD)));
   const rows = Math.ceil(components.length / cols);
   const cellW = innerW / cols;
@@ -173,26 +235,15 @@ function buildComponentsForBox(box) {
   for (let i = 0; i < components.length; i++) {
     const r = Math.floor(i / cols);
     const c = i % cols;
-    const cw = cellW - margin;
-    const cd = cellD - margin;
-    const ch = innerH;
-    const geom = new THREE.BoxGeometry(cw, ch, cd);
-    const mat = new THREE.MeshStandardMaterial({
-      color: def.color,
-      roughness: 0.4,
-      metalness: 0.5,
-      emissive: def.color,
-      emissiveIntensity: 0.15,
-    });
-    const part = new THREE.Mesh(geom, mat);
     const x = -innerW / 2 + cellW / 2 + c * cellW;
     const z = -innerD / 2 + cellD / 2 + r * cellD;
-    part.position.set(box.position.x + x, box.position.y, box.position.z + z);
-    part.add(new THREE.LineSegments(
-      new THREE.EdgesGeometry(geom),
-      new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.4 })
-    ));
-    componentGroup.add(part);
+    addPart(box, {
+      name: components[i],
+      color: def.color,
+      x, z,
+      w: cellW - margin,
+      d: cellD - margin,
+    }, partHeight);
   }
 }
 
@@ -234,23 +285,21 @@ function selectBox(box) {
   buildComponentsForBox(box);
   componentGroup.visible = true;
   for (const b of boxes) {
-    if (b !== box) {
-      b.material.transparent = true;
-      b.material.opacity = 0.08;
-      b.visible = true;
-    } else {
+    if (b === box) {
       b.material.transparent = true;
       b.material.opacity = 0.0;
+      b.visible = true;
+    } else {
+      b.visible = false;
     }
   }
   rackGroup.children.forEach((c) => {
-    if (c.material === frameMaterial) {
-      c.material.transparent = true;
-      c.material.opacity = 0.2;
-    }
+    if (c.material === frameMaterial) c.visible = false;
   });
 
-  const offset = new THREE.Vector3(RACK_WIDTH * 0.7, TYPES[box.userData.type].height * 2, RACK_DEPTH * 1.6);
+  const offset = box.userData.type === 'compute'
+    ? new THREE.Vector3(2, 4.5, 5.5)
+    : new THREE.Vector3(RACK_WIDTH * 0.6, RACK_DEPTH * 1.2, RACK_DEPTH * 1.6);
   const camTo = box.position.clone().add(offset);
   animateCameraTo(camTo, box.position.clone());
 
@@ -276,8 +325,9 @@ function deselect() {
     b.material.opacity = 1.0;
     b.visible = true;
   }
-  frameMaterial.transparent = false;
-  frameMaterial.opacity = 1.0;
+  rackGroup.children.forEach((c) => {
+    if (c.material === frameMaterial) c.visible = true;
+  });
   animateCameraTo(defaultCamPos, defaultTarget);
   document.getElementById('info-panel').classList.add('hidden');
 }
