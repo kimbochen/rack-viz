@@ -108,7 +108,23 @@ html, body {
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 4px 0;
+  padding: 4px 6px;
+  border-radius: 4px;
+}
+
+#info-components li.clickable {
+  cursor: pointer;
+}
+
+#info-components li.clickable:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+#info-components li.clickable::after {
+  content: "›";
+  margin-left: auto;
+  opacity: 0.4;
+  font-size: 14px;
 }
 
 .comp-swatch {

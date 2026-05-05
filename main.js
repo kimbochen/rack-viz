@@ -43,11 +43,6 @@ const TYPES = {
   },
 };
 
-// Spec is rows × columns (depth × width). Layout 9 wide × 10 deep, scaled by 0.4
-// to fit the tray's 4-unit depth; plate is also narrowed in X to match (3.6 wide).
-// Row 1 (back, depth 2):  A | X (gap) | A   - A is 4w × 5d
-// Row 2 (mid,  depth 0.8): B | D | B         - B 3w×1d back-aligned, D 3w×2d
-// Row 3 (front,depth 1.2): C | E | C         - C 3w×3d, E 3w×2d centered
 const COMPUTE_PARTS = [
   { name: 'Bianca board',       color: 0x42a5f5, x: -1.0, z: -1.0, w: 1.6, d: 2.0 },
   { name: 'Bianca board',       color: 0x42a5f5, x:  1.0, z: -1.0, w: 1.6, d: 2.0 },
@@ -59,8 +54,6 @@ const COMPUTE_PARTS = [
   { name: 'Storage bay',        color: 0xffca28, x:  0.0, z:  1.4, w: 1.2, d: 0.8 },
 ];
 
-// Bianca board layout. Spec rows × cols. Layout 6.5 wide × 7.5 deep (unscaled),
-// scaled by BIANCA_SCALE = 0.55 to render as a roughly 3.6 × 4 platter.
 const BIANCA_SCALE = 0.55;
 const BIANCA_PLATE_W = 6.5 * BIANCA_SCALE;
 const BIANCA_PLATE_D = 7.5 * BIANCA_SCALE;
@@ -338,7 +331,7 @@ function animateCameraTo(toPos, toTarget) {
 const defaultCamPos = camera.position.clone();
 const defaultTarget = controls.target.clone();
 
-function renderSidebar({ breadcrumb, title, count, desc, items }) {
+function renderSidebar({ breadcrumb, title, count, desc, items, onItemClick }) {
   document.getElementById('info-breadcrumb').textContent = breadcrumb;
   document.getElementById('info-title').textContent = title;
   document.getElementById('info-count').textContent = count || '';
@@ -347,6 +340,10 @@ function renderSidebar({ breadcrumb, title, count, desc, items }) {
   ul.innerHTML = '';
   for (const c of items) {
     const li = document.createElement('li');
+    if (onItemClick) {
+      li.classList.add('clickable');
+      li.addEventListener('click', () => onItemClick(c));
+    }
     const swatch = document.createElement('span');
     swatch.className = 'comp-swatch';
     swatch.style.background = '#' + c.color.toString(16).padStart(6, '0');
@@ -390,6 +387,9 @@ function showTrayView(box) {
     count: `Unit ${box.userData.indexInSection + 1} of ${box.userData.totalInSection}`,
     desc: def.description,
     items: getComponentList(box.userData.type),
+    onItemClick: box.userData.type === 'compute'
+      ? (c) => { if (c.name === 'Bianca board') selectBianca(); }
+      : null,
   });
 }
 
