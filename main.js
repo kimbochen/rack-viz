@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
 const RACK_WIDTH = 6;
 const RACK_DEPTH = 4;
@@ -78,12 +79,12 @@ const BIANCA_COMPONENT_LIST = [
 ];
 
 // NVSwitch5 tray layout. Plate ~3.6 × 4 like compute tray.
-// 2 NVSwitch packages at the back, gap, 2 Paladin HD connectors at the front.
+// 2 NVSwitch packages at the front, gap, 2 Paladin HD connectors at the back.
 const NVSWITCH_PARTS = [
-  { name: 'NVSwitch package', color: 0x546e7a, x: -1.0, z: -1.2, w: 1.6, d: 1.6 },
-  { name: 'NVSwitch package', color: 0x546e7a, x:  1.0, z: -1.2, w: 1.6, d: 1.6 },
-  { name: 'Paladin HD',       color: 0xffca28, x: -0.6, z:  1.6, w: 0.6, d: 0.4 },
-  { name: 'Paladin HD',       color: 0xffca28, x:  0.6, z:  1.6, w: 0.6, d: 0.4 },
+  { name: 'NVSwitch package', color: 0x546e7a, x: -1.0, z:  1.2, w: 1.6, d: 1.6 },
+  { name: 'NVSwitch package', color: 0x546e7a, x:  1.0, z:  1.2, w: 1.6, d: 1.6 },
+  { name: 'Paladin HD',       color: 0xffca28, x: -0.6, z: -1.6, w: 0.6, d: 0.4 },
+  { name: 'Paladin HD',       color: 0xffca28, x:  0.6, z: -1.6, w: 0.6, d: 0.4 },
 ];
 
 const NVSWITCH_COMPONENT_LIST = [
@@ -291,8 +292,8 @@ function buildComponentsForBox(box) {
     }
     // Overpass flyover cables: each NVSwitch package -> each Paladin HD
     const cableY = centerY + COMPONENT_HEIGHT / 2;
-    const pkgs = [{ x: -1.0, z: -0.4 }, { x: 1.0, z: -0.4 }];
-    const pals = [{ x: -0.6, z:  1.4 }, { x: 0.6, z:  1.4 }];
+    const pkgs = [{ x: -1.0, z:  0.4 }, { x: 1.0, z:  0.4 }]; // package back edge (toward paladin)
+    const pals = [{ x: -0.6, z: -1.4 }, { x: 0.6, z: -1.4 }]; // paladin front edge (toward package)
     for (const pkg of pkgs) {
       for (const pal of pals) {
         const start = new THREE.Vector3(box.position.x + pkg.x, cableY, box.position.z + pkg.z);
@@ -579,8 +580,8 @@ function buildRackCables() {
   while (cableGroup.children.length) cableGroup.remove(cableGroup.children[0]);
   const nvSwitchTrays = boxes.filter((b) => b.userData.type === 'nvswitch');
   const computeTrays = boxes.filter((b) => b.userData.type === 'compute');
-  const segments = [];
   const backZ = -RACK_DEPTH / 2 - 0.05;
+  const tubeGeoms = [];
   for (const nv of nvSwitchTrays) {
     for (const pkgX of [-RACK_WIDTH * 0.18, RACK_WIDTH * 0.18]) {
       for (const ct of computeTrays) {
@@ -594,21 +595,19 @@ function buildRackCables() {
             arch
           );
           const curve = new THREE.CatmullRomCurve3([start, mid, end]);
-          const pts = curve.getPoints(14);
-          for (let i = 0; i < pts.length - 1; i++) {
-            segments.push(pts[i].x, pts[i].y, pts[i].z);
-            segments.push(pts[i + 1].x, pts[i + 1].y, pts[i + 1].z);
-          }
+          tubeGeoms.push(new THREE.TubeGeometry(curve, 10, 0.022, 4, false));
         }
       }
     }
   }
-  const geom = new THREE.BufferGeometry();
-  geom.setAttribute('position', new THREE.Float32BufferAttribute(segments, 3));
-  const mat = new THREE.LineBasicMaterial({
-    color: 0xff7043, transparent: true, opacity: 0.18,
+  const merged = mergeGeometries(tubeGeoms);
+  tubeGeoms.forEach((g) => g.dispose());
+  const mat = new THREE.MeshStandardMaterial({
+    color: 0xff7043, roughness: 0.5, metalness: 0.2,
+    emissive: 0xff7043, emissiveIntensity: 0.25,
+    transparent: true, opacity: 0.55,
   });
-  cableGroup.add(new THREE.LineSegments(geom, mat));
+  cableGroup.add(new THREE.Mesh(merged, mat));
 }
 buildRackCables();
 
