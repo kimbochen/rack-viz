@@ -2,8 +2,8 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
 import { mergeGeometries } from 'three/addons/utils/BufferGeometryUtils.js';
 
-const RACK_WIDTH = 6;
-const RACK_DEPTH = 4;
+const RACK_WIDTH = 4;
+const RACK_DEPTH = 8;
 const U = 0.35;
 
 const TYPES = {
@@ -215,9 +215,13 @@ const PLATE_SCALE_Y = 0.18;
 const COMPONENT_HEIGHT = 0.55;
 const PLATE_THICKNESS_FALLBACK = U * 0.9 * PLATE_SCALE_Y;
 
-function plateXScaleFor(type) {
-  if (type === 'compute' || type === 'nvswitch') return 0.6;
-  return 1;
+function plateScaleFor(type) {
+  // Compute & NVSwitch tray layouts are sized 3.6 × 4 in scaled units; shrink
+  // the host plate so it matches that footprint instead of the full rack face.
+  if (type === 'compute' || type === 'nvswitch') {
+    return { x: 3.6 / RACK_WIDTH, z: 4 / RACK_DEPTH };
+  }
+  return { x: 1, z: 1 };
 }
 
 function createCable(start, end, archHeight, radius, color, opacity = 1) {
@@ -417,7 +421,8 @@ function showTrayView(box) {
   cableGroup.visible = false;
   for (const b of boxes) {
     if (b === box) {
-      b.scale.set(plateXScaleFor(b.userData.type), PLATE_SCALE_Y, 1);
+      const ps = plateScaleFor(b.userData.type);
+      b.scale.set(ps.x, PLATE_SCALE_Y, ps.z);
       b.visible = true;
     } else {
       b.visible = false;
