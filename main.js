@@ -166,30 +166,6 @@ const componentGroup = new THREE.Group();
 componentGroup.visible = false;
 scene.add(componentGroup);
 
-function makeLabel(text) {
-  const canvas = document.createElement('canvas');
-  canvas.width = 256;
-  canvas.height = 64;
-  const ctx = canvas.getContext('2d');
-  ctx.fillStyle = 'rgba(15, 18, 25, 0.85)';
-  ctx.fillRect(0, 0, canvas.width, canvas.height);
-  ctx.strokeStyle = 'rgba(255, 255, 255, 0.25)';
-  ctx.lineWidth = 2;
-  ctx.strokeRect(1, 1, canvas.width - 2, canvas.height - 2);
-  ctx.font = 'bold 28px -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif';
-  ctx.fillStyle = '#ffffff';
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillText(text, canvas.width / 2, canvas.height / 2);
-  const tex = new THREE.CanvasTexture(canvas);
-  tex.minFilter = THREE.LinearFilter;
-  const mat = new THREE.SpriteMaterial({ map: tex, depthTest: false, transparent: true });
-  const sprite = new THREE.Sprite(mat);
-  sprite.scale.set(1.0, 0.25, 1);
-  sprite.renderOrder = 999;
-  return sprite;
-}
-
 function addPart(box, p, partHeight) {
   const geom = new THREE.BoxGeometry(p.w, partHeight, p.d);
   const mat = new THREE.MeshStandardMaterial({
@@ -206,10 +182,20 @@ function addPart(box, p, partHeight) {
     new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.4 })
   ));
   componentGroup.add(part);
+}
 
-  const label = makeLabel(p.name);
-  label.position.set(part.position.x, part.position.y + partHeight / 2 + 0.18, part.position.z);
-  componentGroup.add(label);
+const COMPUTE_COMPONENT_LIST = [
+  { name: 'Bianca board',           count: 2, color: 0x42a5f5 },
+  { name: 'Daughter board',         count: 2, color: 0xab47bc },
+  { name: 'BlueField-3',            count: 2, color: 0x26a69a },
+  { name: 'Power distribution',     count: 1, color: 0xff7043 },
+  { name: 'Storage bay',            count: 1, color: 0xffca28 },
+];
+
+function getComponentList(type) {
+  if (type === 'compute') return COMPUTE_COMPONENT_LIST;
+  const def = TYPES[type];
+  return def.components.map((name) => ({ name, count: 1, color: def.color }));
 }
 
 function buildComponentsForBox(box) {
@@ -304,14 +290,21 @@ function selectBox(box) {
   animateCameraTo(camTo, box.position.clone());
 
   const def = TYPES[box.userData.type];
+  document.getElementById('info-breadcrumb').textContent = `GB200 NVL72  ›  ${def.name}`;
   document.getElementById('info-title').textContent = def.name;
   document.getElementById('info-count').textContent = `Unit ${box.userData.indexInSection + 1} of ${box.userData.totalInSection}`;
   document.getElementById('info-desc').textContent = def.description;
   const ul = document.getElementById('info-components');
   ul.innerHTML = '';
-  for (const c of def.components) {
+  for (const c of getComponentList(box.userData.type)) {
     const li = document.createElement('li');
-    li.textContent = c;
+    const swatch = document.createElement('span');
+    swatch.className = 'comp-swatch';
+    swatch.style.background = '#' + c.color.toString(16).padStart(6, '0');
+    li.appendChild(swatch);
+    const txt = document.createElement('span');
+    txt.textContent = c.count > 1 ? `${c.name} ×${c.count}` : c.name;
+    li.appendChild(txt);
     ul.appendChild(li);
   }
   document.getElementById('info-panel').classList.remove('hidden');

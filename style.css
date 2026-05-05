@@ -113,15 +113,35 @@ html, body {
   opacity: 0.85;
 }
 
+#info-breadcrumb {
+  font-size: 11px;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+  opacity: 0.55;
+  margin-bottom: 6px;
+}
+
 #info-components {
   list-style: none;
   font-size: 13px;
-  line-height: 1.7;
+  line-height: 1.5;
+  padding-left: 4px;
 }
 
-#info-components li::before {
-  content: "▸ ";
-  opacity: 0.5;
+#info-components li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0;
+}
+
+.comp-swatch {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 2px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  flex-shrink: 0;
 }
 
 #back-btn {
