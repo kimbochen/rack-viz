@@ -43,15 +43,44 @@ const TYPES = {
   },
 };
 
+// Spec is rows × columns (depth × width). Layout 9 wide × 10 deep, scaled by 0.4
+// to fit the tray's 4-unit depth; plate is also narrowed in X to match (3.6 wide).
+// Row 1 (back, depth 2):  A | X (gap) | A   - A is 4w × 5d
+// Row 2 (mid,  depth 0.8): B | D | B         - B 3w×1d back-aligned, D 3w×2d
+// Row 3 (front,depth 1.2): C | E | C         - C 3w×3d, E 3w×2d centered
 const COMPUTE_PARTS = [
-  { name: 'Bianca board',           color: 0x42a5f5, x: -2,   z: -1.2, w: 2,   d: 1.6 },
-  { name: 'Bianca board',           color: 0x42a5f5, x:  2,   z: -1.2, w: 2,   d: 1.6 },
-  { name: 'Daughter board',         color: 0xab47bc, x: -2,   z:  0.2, w: 0.4, d: 1.2 },
-  { name: 'Daughter board',         color: 0xab47bc, x:  2,   z:  0.2, w: 0.4, d: 1.2 },
-  { name: 'Power distribution',     color: 0xff7043, x:  0,   z:  0.2, w: 0.8, d: 1.2 },
-  { name: 'BlueField-3',            color: 0x26a69a, x: -2,   z:  1.4, w: 1.2, d: 1.2 },
-  { name: 'BlueField-3',            color: 0x26a69a, x:  2,   z:  1.4, w: 1.2, d: 1.2 },
-  { name: 'Storage bay',            color: 0xffca28, x:  0,   z:  1.4, w: 0.8, d: 1.2 },
+  { name: 'Bianca board',       color: 0x42a5f5, x: -1.0, z: -1.0, w: 1.6, d: 2.0 },
+  { name: 'Bianca board',       color: 0x42a5f5, x:  1.0, z: -1.0, w: 1.6, d: 2.0 },
+  { name: 'Daughter board',     color: 0xab47bc, x: -1.2, z:  0.2, w: 1.2, d: 0.4 },
+  { name: 'Daughter board',     color: 0xab47bc, x:  1.2, z:  0.2, w: 1.2, d: 0.4 },
+  { name: 'Power distribution', color: 0xff7043, x:  0.0, z:  0.4, w: 1.2, d: 0.8 },
+  { name: 'BlueField-3',        color: 0x26a69a, x: -1.2, z:  1.4, w: 1.2, d: 1.2 },
+  { name: 'BlueField-3',        color: 0x26a69a, x:  1.2, z:  1.4, w: 1.2, d: 1.2 },
+  { name: 'Storage bay',        color: 0xffca28, x:  0.0, z:  1.4, w: 1.2, d: 0.8 },
+];
+
+// Bianca board layout. Spec rows × cols. Layout 6.5 wide × 7.5 deep (unscaled),
+// scaled by BIANCA_SCALE = 0.55 to render as a roughly 3.6 × 4 platter.
+const BIANCA_SCALE = 0.55;
+const BIANCA_PLATE_W = 6.5 * BIANCA_SCALE;
+const BIANCA_PLATE_D = 7.5 * BIANCA_SCALE;
+const BIANCA_PARTS = [
+  { name: 'NVLink5 Connector', color: 0x424242, x:  0,    z: -3.5,  w: 4,   d: 0.5 },
+  { name: 'Blackwell GPU',     color: 0x76d275, x: -1.75, z: -1.75, w: 3,   d: 3   },
+  { name: 'Blackwell GPU',     color: 0x76d275, x:  1.75, z: -1.75, w: 3,   d: 3   },
+  { name: 'LPDDR5X',           color: 0xb39ddb, x: -2,    z:  0.75, w: 1,   d: 2   },
+  { name: 'Grace CPU',         color: 0xff8a65, x:  0,    z:  0.75, w: 3,   d: 2   },
+  { name: 'LPDDR5X',           color: 0xb39ddb, x:  2,    z:  0.75, w: 1,   d: 2   },
+  { name: 'CX-7',              color: 0x4dd0e1, x: -1,    z:  2.75, w: 1.5, d: 2   },
+  { name: 'CX-7',              color: 0x4dd0e1, x:  1,    z:  2.75, w: 1.5, d: 2   },
+];
+
+const BIANCA_COMPONENT_LIST = [
+  { name: 'NVLink5 Connector', count: 1, color: 0x424242 },
+  { name: 'Blackwell GPU',     count: 2, color: 0x76d275 },
+  { name: 'Grace CPU',         count: 1, color: 0xff8a65 },
+  { name: 'LPDDR5X',           count: 2, color: 0xb39ddb },
+  { name: 'CX-7',              count: 2, color: 0x4dd0e1 },
 ];
 
 const RACK_LAYOUT = [
@@ -166,11 +195,21 @@ const componentGroup = new THREE.Group();
 componentGroup.visible = false;
 scene.add(componentGroup);
 
+const biancaGroup = new THREE.Group();
+biancaGroup.visible = false;
+scene.add(biancaGroup);
+
 const PLATE_SCALE_Y = 0.18;
 const COMPONENT_HEIGHT = 0.55;
+const PLATE_THICKNESS_FALLBACK = U * 0.9 * PLATE_SCALE_Y;
 
-function addPart(box, p, partHeight, centerY) {
-  const geom = new THREE.BoxGeometry(p.w, partHeight, p.d);
+function plateXScaleFor(type) {
+  if (type === 'compute') return 0.6;
+  return 1;
+}
+
+function addPart(group, p, partHeight, cx, cy, cz, scale = 1) {
+  const geom = new THREE.BoxGeometry(p.w * scale, partHeight, p.d * scale);
   const mat = new THREE.MeshStandardMaterial({
     color: p.color,
     roughness: 0.4,
@@ -179,12 +218,14 @@ function addPart(box, p, partHeight, centerY) {
     emissiveIntensity: 0.18,
   });
   const part = new THREE.Mesh(geom, mat);
-  part.position.set(box.position.x + p.x, centerY, box.position.z + p.z);
+  part.position.set(cx + p.x * scale, cy, cz + p.z * scale);
+  part.userData = { partName: p.name };
   part.add(new THREE.LineSegments(
     new THREE.EdgesGeometry(geom),
     new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.4 })
   ));
-  componentGroup.add(part);
+  group.add(part);
+  return part;
 }
 
 const COMPUTE_COMPONENT_LIST = [
@@ -210,7 +251,9 @@ function buildComponentsForBox(box) {
   const centerY = plateTopY + COMPONENT_HEIGHT / 2;
 
   if (box.userData.type === 'compute') {
-    for (const p of COMPUTE_PARTS) addPart(box, p, COMPONENT_HEIGHT, centerY);
+    for (const p of COMPUTE_PARTS) {
+      addPart(componentGroup, p, COMPONENT_HEIGHT, box.position.x, centerY, box.position.z);
+    }
     return;
   }
 
@@ -228,12 +271,36 @@ function buildComponentsForBox(box) {
     const c = i % cols;
     const x = -innerW / 2 + cellW / 2 + c * cellW;
     const z = -innerD / 2 + cellD / 2 + r * cellD;
-    addPart(box, {
+    addPart(componentGroup, {
+      name: components[i],
       color: def.color,
       x, z,
       w: cellW - margin,
       d: cellD - margin,
-    }, COMPONENT_HEIGHT, centerY);
+    }, COMPONENT_HEIGHT, box.position.x, centerY, box.position.z);
+  }
+}
+
+function buildBianca(centerPos) {
+  while (biancaGroup.children.length) biancaGroup.remove(biancaGroup.children[0]);
+
+  const plate = new THREE.Mesh(
+    new THREE.BoxGeometry(BIANCA_PLATE_W, PLATE_THICKNESS_FALLBACK, BIANCA_PLATE_D),
+    new THREE.MeshStandardMaterial({
+      color: 0x42a5f5, roughness: 0.55, metalness: 0.25,
+      emissive: 0x42a5f5, emissiveIntensity: 0.05,
+    })
+  );
+  plate.position.set(centerPos.x, centerPos.y, centerPos.z);
+  plate.add(new THREE.LineSegments(
+    new THREE.EdgesGeometry(plate.geometry),
+    new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.35 })
+  ));
+  biancaGroup.add(plate);
+
+  const centerY = centerPos.y + PLATE_THICKNESS_FALLBACK / 2 + COMPONENT_HEIGHT / 2;
+  for (const p of BIANCA_PARTS) {
+    addPart(biancaGroup, p, COMPONENT_HEIGHT, centerPos.x, centerY, centerPos.z, BIANCA_SCALE);
   }
 }
 
@@ -243,6 +310,7 @@ const downPos = new THREE.Vector2();
 
 let hovered = null;
 let selected = null;
+let biancaActive = false;
 
 const camAnim = {
   active: false,
@@ -270,36 +338,14 @@ function animateCameraTo(toPos, toTarget) {
 const defaultCamPos = camera.position.clone();
 const defaultTarget = controls.target.clone();
 
-function selectBox(box) {
-  selected = box;
-  for (const b of boxes) {
-    if (b === box) {
-      b.scale.y = PLATE_SCALE_Y;
-      b.visible = true;
-    } else {
-      b.visible = false;
-      b.scale.y = 1;
-    }
-  }
-  rackGroup.children.forEach((c) => {
-    if (c.material === frameMaterial) c.visible = false;
-  });
-  buildComponentsForBox(box);
-  componentGroup.visible = true;
-
-  const def = TYPES[box.userData.type];
-  const offset = new THREE.Vector3(2.5, 4, 5.5);
-  const target = box.position.clone();
-  target.y += COMPONENT_HEIGHT / 2;
-  animateCameraTo(target.clone().add(offset), target);
-
-  document.getElementById('info-breadcrumb').textContent = `GB200 NVL72  ›  ${def.name}`;
-  document.getElementById('info-title').textContent = def.name;
-  document.getElementById('info-count').textContent = `Unit ${box.userData.indexInSection + 1} of ${box.userData.totalInSection}`;
-  document.getElementById('info-desc').textContent = def.description;
+function renderSidebar({ breadcrumb, title, count, desc, items }) {
+  document.getElementById('info-breadcrumb').textContent = breadcrumb;
+  document.getElementById('info-title').textContent = title;
+  document.getElementById('info-count').textContent = count || '';
+  document.getElementById('info-desc').textContent = desc || '';
   const ul = document.getElementById('info-components');
   ul.innerHTML = '';
-  for (const c of getComponentList(box.userData.type)) {
+  for (const c of items) {
     const li = document.createElement('li');
     const swatch = document.createElement('span');
     swatch.className = 'comp-swatch';
@@ -314,11 +360,83 @@ function selectBox(box) {
   document.getElementById('sidebar-detail').classList.remove('hidden');
 }
 
+function showTrayView(box) {
+  biancaActive = false;
+  biancaGroup.visible = false;
+  for (const b of boxes) {
+    if (b === box) {
+      b.scale.set(plateXScaleFor(b.userData.type), PLATE_SCALE_Y, 1);
+      b.visible = true;
+    } else {
+      b.visible = false;
+      b.scale.set(1, 1, 1);
+    }
+  }
+  rackGroup.children.forEach((c) => {
+    if (c.material === frameMaterial) c.visible = false;
+  });
+  buildComponentsForBox(box);
+  componentGroup.visible = true;
+
+  const def = TYPES[box.userData.type];
+  const offset = new THREE.Vector3(2.5, 4, 5.5);
+  const target = box.position.clone();
+  target.y += COMPONENT_HEIGHT / 2;
+  animateCameraTo(target.clone().add(offset), target);
+
+  renderSidebar({
+    breadcrumb: `GB200 NVL72  ›  ${def.name}`,
+    title: def.name,
+    count: `Unit ${box.userData.indexInSection + 1} of ${box.userData.totalInSection}`,
+    desc: def.description,
+    items: getComponentList(box.userData.type),
+  });
+}
+
+function selectBox(box) {
+  selected = box;
+  showTrayView(box);
+}
+
+function selectBianca() {
+  if (!selected) return;
+  biancaActive = true;
+  componentGroup.visible = false;
+  selected.visible = false;
+  buildBianca(selected.position);
+  biancaGroup.visible = true;
+
+  const offset = new THREE.Vector3(3, 4.5, 6);
+  const target = selected.position.clone();
+  target.y += COMPONENT_HEIGHT / 2;
+  animateCameraTo(target.clone().add(offset), target);
+
+  const trayName = TYPES[selected.userData.type].name;
+  renderSidebar({
+    breadcrumb: `GB200 NVL72  ›  ${trayName}  ›  Bianca board`,
+    title: 'Bianca board',
+    count: '2 per Compute Tray',
+    desc: 'Carrier board hosting one Grace CPU, two Blackwell GPUs, LPDDR5X memory and ConnectX-7 NICs.',
+    items: BIANCA_COMPONENT_LIST,
+  });
+}
+
+function goBack() {
+  if (biancaActive) {
+    biancaGroup.visible = false;
+    showTrayView(selected);
+    return;
+  }
+  deselect();
+}
+
 function deselect() {
   selected = null;
+  biancaActive = false;
   componentGroup.visible = false;
+  biancaGroup.visible = false;
   for (const b of boxes) {
-    b.scale.y = 1;
+    b.scale.set(1, 1, 1);
     b.visible = true;
   }
   rackGroup.children.forEach((c) => {
@@ -345,6 +463,17 @@ canvas.addEventListener('pointerup', (e) => {
   if (Math.hypot(dx, dy) > 4) return;
   setPointer(e);
   raycaster.setFromCamera(pointer, camera);
+
+  if (biancaActive) return;
+
+  if (selected) {
+    const partHits = raycaster.intersectObjects(componentGroup.children, false);
+    if (partHits.length > 0 && partHits[0].object.userData.partName === 'Bianca board') {
+      selectBianca();
+    }
+    return;
+  }
+
   const hits = raycaster.intersectObjects(boxes, false);
   if (hits.length > 0) {
     selectBox(hits[0].object);
@@ -365,9 +494,9 @@ canvas.addEventListener('pointermove', (e) => {
   }
 });
 
-document.getElementById('back-btn').addEventListener('click', deselect);
+document.getElementById('back-btn').addEventListener('click', goBack);
 window.addEventListener('keydown', (e) => {
-  if (e.key === 'Escape' && selected) deselect();
+  if (e.key === 'Escape' && selected) goBack();
 });
 
 window.addEventListener('resize', () => {
