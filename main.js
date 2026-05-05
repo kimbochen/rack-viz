@@ -32,7 +32,7 @@ const TYPES = {
     color: 0x81c784,
     height: U,
     description: 'Non-scalable NVSwitch5 tray providing 5th-generation NVLink fabric to 72 GPUs in the rack.',
-    components: ['NVSwitch5 ASIC 0', 'NVSwitch5 ASIC 1', 'OSFP cage row'],
+    components: ['NVSwitch package', 'Paladin HD'],
   },
   drip: {
     name: 'Drip Tray',
@@ -58,7 +58,8 @@ const BIANCA_SCALE = 0.55;
 const BIANCA_PLATE_W = 6.5 * BIANCA_SCALE;
 const BIANCA_PLATE_D = 7.5 * BIANCA_SCALE;
 const BIANCA_PARTS = [
-  { name: 'NVLink5 Connector', color: 0x424242, x:  0,    z: -3.5,  w: 4,   d: 0.5 },
+  { name: 'NVLink5 Connector', color: 0x424242, x: -1.75, z: -3.5,  w: 2,   d: 0.5 },
+  { name: 'NVLink5 Connector', color: 0x424242, x:  1.75, z: -3.5,  w: 2,   d: 0.5 },
   { name: 'Blackwell GPU',     color: 0x76d275, x: -1.75, z: -1.75, w: 3,   d: 3   },
   { name: 'Blackwell GPU',     color: 0x76d275, x:  1.75, z: -1.75, w: 3,   d: 3   },
   { name: 'LPDDR5X',           color: 0xb39ddb, x: -2,    z:  0.75, w: 1,   d: 2   },
@@ -69,11 +70,25 @@ const BIANCA_PARTS = [
 ];
 
 const BIANCA_COMPONENT_LIST = [
-  { name: 'NVLink5 Connector', count: 1, color: 0x424242 },
+  { name: 'NVLink5 Connector', count: 2, color: 0x424242 },
   { name: 'Blackwell GPU',     count: 2, color: 0x76d275 },
   { name: 'Grace CPU',         count: 1, color: 0xff8a65 },
   { name: 'LPDDR5X',           count: 2, color: 0xb39ddb },
   { name: 'CX-7',              count: 2, color: 0x4dd0e1 },
+];
+
+// NVSwitch5 tray layout. Plate ~3.6 × 4 like compute tray.
+// 2 NVSwitch packages at the back, gap, 2 Paladin HD connectors at the front.
+const NVSWITCH_PARTS = [
+  { name: 'NVSwitch package', color: 0x546e7a, x: -1.0, z: -1.2, w: 1.6, d: 1.6 },
+  { name: 'NVSwitch package', color: 0x546e7a, x:  1.0, z: -1.2, w: 1.6, d: 1.6 },
+  { name: 'Paladin HD',       color: 0xffca28, x: -0.6, z:  1.6, w: 0.6, d: 0.4 },
+  { name: 'Paladin HD',       color: 0xffca28, x:  0.6, z:  1.6, w: 0.6, d: 0.4 },
+];
+
+const NVSWITCH_COMPONENT_LIST = [
+  { name: 'NVSwitch package', count: 2, color: 0x546e7a },
+  { name: 'Paladin HD',       count: 2, color: 0xffca28 },
 ];
 
 const RACK_LAYOUT = [
@@ -192,13 +207,32 @@ const biancaGroup = new THREE.Group();
 biancaGroup.visible = false;
 scene.add(biancaGroup);
 
+const cableGroup = new THREE.Group();
+scene.add(cableGroup);
+
 const PLATE_SCALE_Y = 0.18;
 const COMPONENT_HEIGHT = 0.55;
 const PLATE_THICKNESS_FALLBACK = U * 0.9 * PLATE_SCALE_Y;
 
 function plateXScaleFor(type) {
-  if (type === 'compute') return 0.6;
+  if (type === 'compute' || type === 'nvswitch') return 0.6;
   return 1;
+}
+
+function createCable(start, end, archHeight, radius, color, opacity = 1) {
+  const mid = new THREE.Vector3(
+    (start.x + end.x) / 2,
+    Math.max(start.y, end.y) + archHeight,
+    (start.z + end.z) / 2
+  );
+  const curve = new THREE.CatmullRomCurve3([start, mid, end]);
+  const geom = new THREE.TubeGeometry(curve, 20, radius, 6, false);
+  const mat = new THREE.MeshStandardMaterial({
+    color, roughness: 0.4, metalness: 0.2,
+    emissive: color, emissiveIntensity: 0.25,
+    transparent: opacity < 1, opacity,
+  });
+  return new THREE.Mesh(geom, mat);
 }
 
 function addPart(group, p, partHeight, cx, cy, cz, scale = 1) {
@@ -231,6 +265,7 @@ const COMPUTE_COMPONENT_LIST = [
 
 function getComponentList(type) {
   if (type === 'compute') return COMPUTE_COMPONENT_LIST;
+  if (type === 'nvswitch') return NVSWITCH_COMPONENT_LIST;
   const def = TYPES[type];
   return def.components.map((name) => ({ name, count: 1, color: def.color }));
 }
@@ -246,6 +281,24 @@ function buildComponentsForBox(box) {
   if (box.userData.type === 'compute') {
     for (const p of COMPUTE_PARTS) {
       addPart(componentGroup, p, COMPONENT_HEIGHT, box.position.x, centerY, box.position.z);
+    }
+    return;
+  }
+
+  if (box.userData.type === 'nvswitch') {
+    for (const p of NVSWITCH_PARTS) {
+      addPart(componentGroup, p, COMPONENT_HEIGHT, box.position.x, centerY, box.position.z);
+    }
+    // Overpass flyover cables: each NVSwitch package -> each Paladin HD
+    const cableY = centerY + COMPONENT_HEIGHT / 2;
+    const pkgs = [{ x: -1.0, z: -0.4 }, { x: 1.0, z: -0.4 }];
+    const pals = [{ x: -0.6, z:  1.4 }, { x: 0.6, z:  1.4 }];
+    for (const pkg of pkgs) {
+      for (const pal of pals) {
+        const start = new THREE.Vector3(box.position.x + pkg.x, cableY, box.position.z + pkg.z);
+        const end   = new THREE.Vector3(box.position.x + pal.x, cableY, box.position.z + pal.z);
+        componentGroup.add(createCable(start, end, 0.55, 0.04, 0xff7043));
+      }
     }
     return;
   }
@@ -360,6 +413,7 @@ function renderSidebar({ breadcrumb, title, count, desc, items, onItemClick }) {
 function showTrayView(box) {
   biancaActive = false;
   biancaGroup.visible = false;
+  cableGroup.visible = false;
   for (const b of boxes) {
     if (b === box) {
       b.scale.set(plateXScaleFor(b.userData.type), PLATE_SCALE_Y, 1);
@@ -435,6 +489,7 @@ function deselect() {
   biancaActive = false;
   componentGroup.visible = false;
   biancaGroup.visible = false;
+  cableGroup.visible = true;
   for (const b of boxes) {
     b.scale.set(1, 1, 1);
     b.visible = true;
@@ -519,6 +574,43 @@ for (const key of Object.keys(TYPES)) {
   item.appendChild(label);
   legend.appendChild(item);
 }
+
+function buildRackCables() {
+  while (cableGroup.children.length) cableGroup.remove(cableGroup.children[0]);
+  const nvSwitchTrays = boxes.filter((b) => b.userData.type === 'nvswitch');
+  const computeTrays = boxes.filter((b) => b.userData.type === 'compute');
+  const segments = [];
+  const backZ = -RACK_DEPTH / 2 - 0.05;
+  for (const nv of nvSwitchTrays) {
+    for (const pkgX of [-RACK_WIDTH * 0.18, RACK_WIDTH * 0.18]) {
+      for (const ct of computeTrays) {
+        for (const gpuX of [-RACK_WIDTH * 0.27, -RACK_WIDTH * 0.09, RACK_WIDTH * 0.09, RACK_WIDTH * 0.27]) {
+          const start = new THREE.Vector3(pkgX, nv.position.y, backZ);
+          const end = new THREE.Vector3(gpuX, ct.position.y, backZ);
+          const arch = backZ - 0.4 - Math.random() * 0.6;
+          const mid = new THREE.Vector3(
+            (start.x + end.x) / 2 + (Math.random() - 0.5) * 0.4,
+            (start.y + end.y) / 2,
+            arch
+          );
+          const curve = new THREE.CatmullRomCurve3([start, mid, end]);
+          const pts = curve.getPoints(14);
+          for (let i = 0; i < pts.length - 1; i++) {
+            segments.push(pts[i].x, pts[i].y, pts[i].z);
+            segments.push(pts[i + 1].x, pts[i + 1].y, pts[i + 1].z);
+          }
+        }
+      }
+    }
+  }
+  const geom = new THREE.BufferGeometry();
+  geom.setAttribute('position', new THREE.Float32BufferAttribute(segments, 3));
+  const mat = new THREE.LineBasicMaterial({
+    color: 0xff7043, transparent: true, opacity: 0.18,
+  });
+  cableGroup.add(new THREE.LineSegments(geom, mat));
+}
+buildRackCables();
 
 const clock = new THREE.Clock();
 
