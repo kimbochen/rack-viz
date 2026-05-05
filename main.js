@@ -166,7 +166,10 @@ const componentGroup = new THREE.Group();
 componentGroup.visible = false;
 scene.add(componentGroup);
 
-function addPart(box, p, partHeight) {
+const PLATE_SCALE_Y = 0.18;
+const COMPONENT_HEIGHT = 0.55;
+
+function addPart(box, p, partHeight, centerY) {
   const geom = new THREE.BoxGeometry(p.w, partHeight, p.d);
   const mat = new THREE.MeshStandardMaterial({
     color: p.color,
@@ -176,7 +179,7 @@ function addPart(box, p, partHeight) {
     emissiveIntensity: 0.18,
   });
   const part = new THREE.Mesh(geom, mat);
-  part.position.set(box.position.x + p.x, box.position.y, box.position.z + p.z);
+  part.position.set(box.position.x + p.x, centerY, box.position.z + p.z);
   part.add(new THREE.LineSegments(
     new THREE.EdgesGeometry(geom),
     new THREE.LineBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.4 })
@@ -202,10 +205,12 @@ function buildComponentsForBox(box) {
   while (componentGroup.children.length) componentGroup.remove(componentGroup.children[0]);
 
   const def = TYPES[box.userData.type];
-  const partHeight = def.height * 0.65;
+  const plateThickness = def.height * 0.9 * PLATE_SCALE_Y;
+  const plateTopY = box.position.y + plateThickness / 2;
+  const centerY = plateTopY + COMPONENT_HEIGHT / 2;
 
   if (box.userData.type === 'compute') {
-    for (const p of COMPUTE_PARTS) addPart(box, p, partHeight);
+    for (const p of COMPUTE_PARTS) addPart(box, p, COMPONENT_HEIGHT, centerY);
     return;
   }
 
@@ -224,12 +229,11 @@ function buildComponentsForBox(box) {
     const x = -innerW / 2 + cellW / 2 + c * cellW;
     const z = -innerD / 2 + cellD / 2 + r * cellD;
     addPart(box, {
-      name: components[i],
       color: def.color,
       x, z,
       w: cellW - margin,
       d: cellD - margin,
-    }, partHeight);
+    }, COMPONENT_HEIGHT, centerY);
   }
 }
 
@@ -268,28 +272,27 @@ const defaultTarget = controls.target.clone();
 
 function selectBox(box) {
   selected = box;
-  buildComponentsForBox(box);
-  componentGroup.visible = true;
   for (const b of boxes) {
     if (b === box) {
-      b.material.transparent = true;
-      b.material.opacity = 0.0;
+      b.scale.y = PLATE_SCALE_Y;
       b.visible = true;
     } else {
       b.visible = false;
+      b.scale.y = 1;
     }
   }
   rackGroup.children.forEach((c) => {
     if (c.material === frameMaterial) c.visible = false;
   });
-
-  const offset = box.userData.type === 'compute'
-    ? new THREE.Vector3(2, 4.5, 5.5)
-    : new THREE.Vector3(RACK_WIDTH * 0.6, RACK_DEPTH * 1.2, RACK_DEPTH * 1.6);
-  const camTo = box.position.clone().add(offset);
-  animateCameraTo(camTo, box.position.clone());
+  buildComponentsForBox(box);
+  componentGroup.visible = true;
 
   const def = TYPES[box.userData.type];
+  const offset = new THREE.Vector3(2.5, 4, 5.5);
+  const target = box.position.clone();
+  target.y += COMPONENT_HEIGHT / 2;
+  animateCameraTo(target.clone().add(offset), target);
+
   document.getElementById('info-breadcrumb').textContent = `GB200 NVL72  ›  ${def.name}`;
   document.getElementById('info-title').textContent = def.name;
   document.getElementById('info-count').textContent = `Unit ${box.userData.indexInSection + 1} of ${box.userData.totalInSection}`;
@@ -307,22 +310,23 @@ function selectBox(box) {
     li.appendChild(txt);
     ul.appendChild(li);
   }
-  document.getElementById('info-panel').classList.remove('hidden');
+  document.getElementById('sidebar-default').classList.add('hidden');
+  document.getElementById('sidebar-detail').classList.remove('hidden');
 }
 
 function deselect() {
   selected = null;
   componentGroup.visible = false;
   for (const b of boxes) {
-    b.material.transparent = false;
-    b.material.opacity = 1.0;
+    b.scale.y = 1;
     b.visible = true;
   }
   rackGroup.children.forEach((c) => {
     if (c.material === frameMaterial) c.visible = true;
   });
   animateCameraTo(defaultCamPos, defaultTarget);
-  document.getElementById('info-panel').classList.add('hidden');
+  document.getElementById('sidebar-detail').classList.add('hidden');
+  document.getElementById('sidebar-default').classList.remove('hidden');
 }
 
 function setPointer(e) {

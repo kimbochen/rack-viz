@@ -28,8 +28,14 @@ html, body {
   position: absolute;
   top: 20px;
   left: 20px;
+  width: 280px;
   z-index: 10;
-  pointer-events: none;
+  pointer-events: auto;
+}
+
+#sidebar-default.hidden,
+#sidebar-detail.hidden {
+  display: none;
 }
 
 #hud h1 {
@@ -49,7 +55,6 @@ html, body {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  pointer-events: auto;
 }
 
 .legend-item {
@@ -67,38 +72,9 @@ html, body {
   border: 1px solid rgba(255, 255, 255, 0.1);
 }
 
-#info-panel {
-  position: absolute;
-  top: 20px;
-  right: 20px;
-  width: 320px;
-  background: rgba(20, 25, 35, 0.92);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 8px;
-  padding: 18px 20px;
-  backdrop-filter: blur(8px);
-  z-index: 10;
-  transition: opacity 0.25s ease, transform 0.25s ease;
-}
-
-#info-panel.hidden {
-  opacity: 0;
-  transform: translateX(20px);
-  pointer-events: none;
-}
-
-#info-panel h2 {
+#sidebar-detail h2 {
   font-size: 18px;
   margin-bottom: 4px;
-}
-
-#info-panel h3 {
-  font-size: 13px;
-  margin-top: 16px;
-  margin-bottom: 8px;
-  text-transform: uppercase;
-  letter-spacing: 1px;
-  opacity: 0.7;
 }
 
 #info-count {
@@ -111,6 +87,7 @@ html, body {
   font-size: 13px;
   line-height: 1.5;
   opacity: 0.85;
+  margin-bottom: 14px;
 }
 
 #info-breadcrumb {
@@ -125,7 +102,6 @@ html, body {
   list-style: none;
   font-size: 13px;
   line-height: 1.5;
-  padding-left: 4px;
 }
 
 #info-components li {
@@ -137,8 +113,8 @@ html, body {
 
 .comp-swatch {
   display: inline-block;
-  width: 10px;
-  height: 10px;
+  width: 12px;
+  height: 12px;
   border-radius: 2px;
   border: 1px solid rgba(255, 255, 255, 0.12);
   flex-shrink: 0;
@@ -152,7 +128,7 @@ html, body {
   padding: 5px 10px;
   border-radius: 4px;
   cursor: pointer;
-  margin-bottom: 12px;
+  margin-bottom: 14px;
 }
 
 #back-btn:hover {
@@ -160,21 +136,15 @@ html, body {
 }
 
 @media (max-width: 600px) {
-  #hud { top: 12px; left: 12px; }
+  #hud {
+    top: 12px;
+    left: 12px;
+    right: 12px;
+    width: auto;
+    max-height: 50vh;
+    overflow-y: auto;
+  }
   #hud h1 { font-size: 18px; }
   #hud .subtitle { font-size: 11px; }
   .legend-item { font-size: 11px; }
-  #info-panel {
-    top: auto;
-    right: 8px;
-    left: 8px;
-    bottom: 8px;
-    width: auto;
-    max-height: 45vh;
-    overflow-y: auto;
-    padding: 14px 16px;
-  }
-  #info-panel.hidden {
-    transform: translateY(20px);
-  }
 }
