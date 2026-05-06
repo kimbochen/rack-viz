@@ -216,8 +216,6 @@ const COMPONENT_HEIGHT = 0.55;
 const PLATE_THICKNESS_FALLBACK = U * 0.9 * PLATE_SCALE_Y;
 
 function plateScaleFor(type) {
-  // Compute & NVSwitch tray layouts are sized 3.6 × 4 in scaled units; shrink
-  // the host plate so it matches that footprint instead of the full rack face.
   if (type === 'compute' || type === 'nvswitch') {
     return { x: 3.6 / RACK_WIDTH, z: 4 / RACK_DEPTH };
   }
@@ -294,10 +292,9 @@ function buildComponentsForBox(box) {
     for (const p of NVSWITCH_PARTS) {
       addPart(componentGroup, p, COMPONENT_HEIGHT, box.position.x, centerY, box.position.z);
     }
-    // Overpass flyover cables: each NVSwitch package -> each Paladin HD
     const cableY = centerY + COMPONENT_HEIGHT / 2;
-    const pkgs = [{ x: -1.0, z:  0.4 }, { x: 1.0, z:  0.4 }]; // package back edge (toward paladin)
-    const pals = [{ x: -0.6, z: -1.4 }, { x: 0.6, z: -1.4 }]; // paladin front edge (toward package)
+    const pkgs = [{ x: -1.0, z:  0.4 }, { x: 1.0, z:  0.4 }];
+    const pals = [{ x: -0.6, z: -1.4 }, { x: 0.6, z: -1.4 }];
     for (const pkg of pkgs) {
       for (const pal of pals) {
         const start = new THREE.Vector3(box.position.x + pkg.x, cableY, box.position.z + pkg.z);
@@ -355,6 +352,18 @@ function buildBianca(centerPos) {
   }
 }
 
+const TRANSITION_DURATION = 0.7;
+
+const tweens = [];
+function tween(obj, prop, from, to, dur, onComplete) {
+  for (let i = tweens.length - 1; i >= 0; i--) {
+    if (tweens[i].obj === obj && tweens[i].prop === prop) tweens.splice(i, 1);
+  }
+  const fromVal = (from && from.isVector3) ? from.clone() : from;
+  const toVal = (to && to.isVector3) ? to.clone() : to;
+  tweens.push({ obj, prop, from: fromVal, to: toVal, t: 0, dur, onComplete });
+}
+
 const raycaster = new THREE.Raycaster();
 const pointer = new THREE.Vector2();
 const downPos = new THREE.Vector2();
@@ -366,24 +375,26 @@ let biancaActive = false;
 const camAnim = {
   active: false,
   t: 0,
-  duration: 0.8,
+  duration: TRANSITION_DURATION,
   fromPos: new THREE.Vector3(),
   toPos: new THREE.Vector3(),
   fromTarget: new THREE.Vector3(),
   toTarget: new THREE.Vector3(),
+  onComplete: null,
 };
 
 function easeInOutCubic(t) {
   return t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2;
 }
 
-function animateCameraTo(toPos, toTarget) {
+function animateCameraTo(toPos, toTarget, onComplete) {
   camAnim.fromPos.copy(camera.position);
   camAnim.toPos.copy(toPos);
   camAnim.fromTarget.copy(controls.target);
   camAnim.toTarget.copy(toTarget);
   camAnim.t = 0;
   camAnim.active = true;
+  camAnim.onComplete = onComplete || null;
 }
 
 const defaultCamPos = camera.position.clone();
@@ -419,27 +430,38 @@ function showTrayView(box) {
   biancaActive = false;
   biancaGroup.visible = false;
   cableGroup.visible = false;
+  componentGroup.visible = false;
+
+  const ps = plateScaleFor(box.userData.type);
+  const targetScale = new THREE.Vector3(ps.x, PLATE_SCALE_Y, ps.z);
+
   for (const b of boxes) {
+    b.material.transparent = true;
+    b.visible = true;
     if (b === box) {
-      const ps = plateScaleFor(b.userData.type);
-      b.scale.set(ps.x, PLATE_SCALE_Y, ps.z);
-      b.visible = true;
+      tween(b, 'scale', b.scale.clone(), targetScale, TRANSITION_DURATION);
+      tween(b.material, 'opacity', b.material.opacity, 1, TRANSITION_DURATION);
     } else {
-      b.visible = false;
-      b.scale.set(1, 1, 1);
+      tween(b.material, 'opacity', b.material.opacity, 0, TRANSITION_DURATION);
     }
   }
-  rackGroup.children.forEach((c) => {
-    if (c.material === frameMaterial) c.visible = false;
-  });
-  buildComponentsForBox(box);
-  componentGroup.visible = true;
+  frameMaterial.transparent = true;
+  tween(frameMaterial, 'opacity', frameMaterial.opacity, 0, TRANSITION_DURATION);
 
   const def = TYPES[box.userData.type];
   const offset = new THREE.Vector3(2.5, 4, 5.5);
   const target = box.position.clone();
   target.y += COMPONENT_HEIGHT / 2;
-  animateCameraTo(target.clone().add(offset), target);
+  animateCameraTo(target.clone().add(offset), target, () => {
+    for (const b of boxes) if (b !== box) b.visible = false;
+    rackGroup.children.forEach((c) => {
+      if (c.material === frameMaterial) c.visible = false;
+    });
+    if (selected === box && !biancaActive) {
+      buildComponentsForBox(box);
+      componentGroup.visible = true;
+    }
+  });
 
   renderSidebar({
     breadcrumb: `GB200 NVL72  ›  ${def.name}`,
@@ -483,8 +505,28 @@ function selectBianca() {
 
 function goBack() {
   if (biancaActive) {
+    biancaActive = false;
     biancaGroup.visible = false;
-    showTrayView(selected);
+    selected.visible = true;
+    buildComponentsForBox(selected);
+    componentGroup.visible = true;
+
+    const offset = new THREE.Vector3(2.5, 4, 5.5);
+    const target = selected.position.clone();
+    target.y += COMPONENT_HEIGHT / 2;
+    animateCameraTo(target.clone().add(offset), target);
+
+    const def = TYPES[selected.userData.type];
+    renderSidebar({
+      breadcrumb: `GB200 NVL72  ›  ${def.name}`,
+      title: def.name,
+      count: `Unit ${selected.userData.indexInSection + 1} of ${selected.userData.totalInSection}`,
+      desc: def.description,
+      items: getComponentList(selected.userData.type),
+      onItemClick: selected.userData.type === 'compute'
+        ? (c) => { if (c.name === 'Bianca board') selectBianca(); }
+        : null,
+    });
     return;
   }
   deselect();
@@ -496,13 +538,19 @@ function deselect() {
   componentGroup.visible = false;
   biancaGroup.visible = false;
   cableGroup.visible = true;
-  for (const b of boxes) {
-    b.scale.set(1, 1, 1);
-    b.visible = true;
-  }
+
   rackGroup.children.forEach((c) => {
     if (c.material === frameMaterial) c.visible = true;
   });
+  for (const b of boxes) {
+    b.material.transparent = true;
+    b.visible = true;
+    tween(b, 'scale', b.scale.clone(), new THREE.Vector3(1, 1, 1), TRANSITION_DURATION);
+    tween(b.material, 'opacity', b.material.opacity, 1, TRANSITION_DURATION);
+  }
+  frameMaterial.transparent = true;
+  tween(frameMaterial, 'opacity', frameMaterial.opacity, 1, TRANSITION_DURATION);
+
   animateCameraTo(defaultCamPos, defaultTarget);
   document.getElementById('sidebar-detail').classList.add('hidden');
   document.getElementById('sidebar-default').classList.remove('hidden');
@@ -519,6 +567,7 @@ canvas.addEventListener('pointerdown', (e) => {
 });
 
 canvas.addEventListener('pointerup', (e) => {
+  if (camAnim.active) return;
   const dx = e.clientX - downPos.x;
   const dy = e.clientY - downPos.y;
   if (Math.hypot(dx, dy) > 4) return;
@@ -620,12 +669,34 @@ const clock = new THREE.Clock();
 
 function animate() {
   const dt = clock.getDelta();
+
+  for (let i = tweens.length - 1; i >= 0; i--) {
+    const tw = tweens[i];
+    tw.t += dt / tw.dur;
+    const k = easeInOutCubic(Math.min(tw.t, 1));
+    if (tw.from && tw.from.isVector3) {
+      tw.obj[tw.prop].lerpVectors(tw.from, tw.to, k);
+    } else {
+      tw.obj[tw.prop] = tw.from + (tw.to - tw.from) * k;
+    }
+    if (tw.t >= 1) {
+      const onC = tw.onComplete;
+      tweens.splice(i, 1);
+      if (onC) onC();
+    }
+  }
+
   if (camAnim.active) {
     camAnim.t += dt / camAnim.duration;
     const k = easeInOutCubic(Math.min(camAnim.t, 1));
     camera.position.lerpVectors(camAnim.fromPos, camAnim.toPos, k);
     controls.target.lerpVectors(camAnim.fromTarget, camAnim.toTarget, k);
-    if (camAnim.t >= 1) camAnim.active = false;
+    if (camAnim.t >= 1) {
+      camAnim.active = false;
+      const onC = camAnim.onComplete;
+      camAnim.onComplete = null;
+      if (onC) onC();
+    }
   }
   controls.update();
   renderer.render(scene, camera);
